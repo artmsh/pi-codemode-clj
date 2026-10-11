@@ -1,0 +1,28 @@
+--- a/pkg/vm/vm.go
++++ b/pkg/vm/vm.go
+@@ -977,10 +977,24 @@
+ 	fmt.Println("#", f.ip, OpcodeToString(inst))
+ }
+ 
++// Safepoint, when set, is called once every safepointInterval executed
++// instructions. A WebAssembly host has no other way to stop a guest that
++// loops without allocating: Go's wasm port has no asynchronous preemption,
++// so such a loop never reaches a host import. The counter is not atomic;
++// the hook is meant for single-threaded embeddings.
++var Safepoint func()
++
++const safepointInterval = 1 << 14
++
++var safepointCount uint32
++
+ func (f *Frame) runLoopInner(state *frameRunState, entering bool) (Value, error) {
+ 	if entering {
+ 		enterFrame(f)
+ 	}
+ 	for {
++		if safepointCount++; safepointCount%safepointInterval == 0 && Safepoint != nil {
++			Safepoint()
++		}
+ 		inst := f.code.code[f.ip]
+ 		if f.debug {
+ 			debugTraceInst(f, inst)
